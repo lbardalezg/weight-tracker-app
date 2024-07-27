@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguimiento de Peso</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0/dist/chartjs-adapter-moment.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #input-container, #button-container {
+            margin-bottom: 20px;
+        }
+        #input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #weight-input {
+            flex-grow: 1;
+            padding: 5px;
+            font-size: 16px;
+        }
+        button {
+            padding: 5px 10px;
+            font-size: 16px;
+            white-space: nowrap;
+        }
+        #reset-button {
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        @media (max-width: 480px) {
+            #input-container {
+                flex-direction: row;
+            }
+            #weight-input {
+                width: 60%;
+            }
+            #add-button {
+                width: 40%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Seguimiento de Peso</h1>
+    <div id="input-container">
+        <input type="number" id="weight-input" placeholder="Ingrese el peso en KG">
+        <button id="add-button">Agregar</button>
+    </div>
+    <canvas id="weight-chart"></canvas>
+    <div id="button-container">
+        <button id="export-button">Exportar como CSV</button>
+        <button id="reset-button">Resetear Datos</button>
+    </div>
+    <h2>Historial de Mediciones</h2>
+    <table id="weight-table">
+        <thead>
+            <tr>
+                <th>Fecha y Hora (UTC)</th>
+                <th>Peso (KG)</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        // El script JavaScript permanece sin cambios
+        const weightInput = document.getElementById('weight-input');
+        const addButton = document.getElementById('add-button');
+        const exportButton = document.getElementById('export-button');
+        const resetButton = document.getElementById('reset-button');
+        const weightTable = document.getElementById('weight-table').getElementsByTagName('tbody')[0];
+        const ctx = document.getElementById('weight-chart').getContext('2d');
+        let chart;
+
+        function formatDate(date) {
+            return date.getUTCFullYear() + '-' +
+                   String(date.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                   String(date.getUTCDate()).padStart(2, '0') + ' ' +
+                   String(date.getUTCHours()).padStart(2, '0') + ':' +
+                   String(date.getUTCMinutes()).padStart(2, '0') + ':' +
+                   String(date.getUTCSeconds()).padStart(2, '0');
+        }
+
+        function addWeight() {
+            const weight = parseFloat(weightInput.value);
+            if (isNaN(weight)) {
+                alert('Por favor, ingrese un número válido');
+                return;
+            }
+
+            const timestamp = new Date().toISOString();
+            const measurement = { timestamp, weight };
+            let measurements = JSON.parse(localStorage.getItem('weightMeasurements') || '[]');
+            measurements.push(measurement);
+            localStorage.setItem('weightMeasurements', JSON.stringify(measurements));
+
+            updateTable();
+            updateChart();
+            weightInput.value = '';
+        }
+
+        function updateTable() {
+            const measurements = JSON.parse(localStorage.getItem('weightMeasurements') || '[]');
+            weightTable.innerHTML = '';
+            measurements.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).forEach(m => {
+                const row = weightTable.insertRow();
+                row.insertCell(0).textContent = formatDate(new Date(m.timestamp));
+                row.insertCell(1).textContent = m.weight;
+            });
+        }
+
+        function updateChart() {
+            const measurements = JSON.parse(localStorage.getItem('weightMeasurements') || '[]');
+            measurements.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            const data = measurements.map(m => ({
+                x: new Date(m.timestamp),
+                y: m.weight
+            }));
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            chart = new Chart(ctx, {
+                data: {
+                    datasets: [
+                        {
+                            type: 'line',
+                            label: 'Peso (KG)',
+                            data: data,
+                            borderColor: 'rgba(75, 192, 192, 0.8)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                            borderWidth: 2,
+                            tension: 0.1,
+                            pointRadius: 0
+                        },
+                        {
+                            type: 'scatter',
+                            label: 'Mediciones',
+                            data: data,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgb(75, 192, 192)',
+                            pointRadius: 5,
+                            pointHoverRadius: 7
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'yyyy-MM-dd HH:mm:ss'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Fecha y Hora (UTC)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Peso (KG)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = 'Peso: ';
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y + ' KG';
+                                    }
+                                    return label;
+                                },
+                                title: function(context) {
+                                    return formatDate(new Date(context[0].parsed.x));
+                                }
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function exportToCSV() {
+            const measurements = JSON.parse(localStorage.getItem('weightMeasurements') || '[]');
+            measurements.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Fecha y Hora (UTC),Peso (KG)\n";
+
+            measurements.forEach(m => {
+                const date = formatDate(new Date(m.timestamp));
+                csvContent += `${date},${m.weight}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "seguimiento_peso.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function resetData() {
+            if (confirm("¿Está seguro de que desea borrar todos los datos? Esta acción no se puede deshacer.")) {
+                localStorage.removeItem('weightMeasurements');
+                updateTable();
+                updateChart();
+                alert("Todos los datos han sido borrados.");
+            }
+        }
+
+        addButton.addEventListener('click', addWeight);
+        exportButton.addEventListener('click', exportToCSV);
+        resetButton.addEventListener('click', resetData);
+        updateTable();
+        updateChart();
+    </script>
+</body>
+</html>
